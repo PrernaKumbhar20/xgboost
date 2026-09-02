@@ -589,7 +589,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y --fix-missing gfortran libopenblas-dev pkg-config
       - name: Install test dependencies
-        run: pip install pytest numpy scipy
+        run: pip install pytest numpy scipy scikit-learn joblib
       - name: Run Python tests (ppc64le)
         run: bash ops/pipeline/test-python-wheel.sh --suite cpu-ppc64le
 
