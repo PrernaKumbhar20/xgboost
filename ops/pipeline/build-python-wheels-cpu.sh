@@ -29,10 +29,13 @@ set -x
 python3 ops/script/pypi_variants.py --use-suffix=cpu --require-nccl-dep=na
 
 if [[ "${arch}" == "ppc64le" ]]; then
-  # Native build on ppc64le — no Docker or ECR image available.
+  # Native build on ppc64le -- no Docker or ECR image available.
   # auditwheel cannot retag to manylinux_2_28 on Ubuntu 24.04 (glibc 2.39 > 2.28),
   # so we build natively and tag as linux_ppc64le for self-hosted testing.
-  pip install --upgrade pip build wheel pydistcheck scikit-build-core cmake ninja
+  sudo apt-get update
+  sudo apt-get install -y --fix-missing gfortran libopenblas-dev pkg-config
+  pip install --upgrade pip build wheel pydistcheck scikit-build-core cmake ninja \
+    pytest numpy scipy scikit-learn joblib hypothesis
   cd python-package
   python -m pip wheel --no-deps -v . --wheel-dir dist/
   cd ..
