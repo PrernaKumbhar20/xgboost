@@ -24,7 +24,7 @@ while [[ $# -gt 0 ]]; do
       ;;
     *)
       echo "Unrecognized argument: $1"
-      echo "Usage: $0 --suite {gpu|mgpu|gpu-arm64|cpu|cpu-arm64} [--cuda-version {12|13}]"
+      echo "Usage: $0 --suite {gpu|mgpu|gpu-arm64|cpu|cpu-arm64|cpu-ppc64le} [--cuda-version {12|13}]"
       exit 1
       ;;
   esac
@@ -32,16 +32,16 @@ done
 
 # Validate required parameters
 if [[ -z "${suite}" ]]; then
-  echo "Error: --suite is required (gpu, mgpu, gpu-arm64, cpu, or cpu-arm64)"
+  echo "Error: --suite is required (gpu, mgpu, gpu-arm64, cpu, cpu-arm64, or cpu-ppc64le)"
   exit 1
 fi
 
 # Validate parameter values
 case "${suite}" in
-  gpu|mgpu|gpu-arm64|cpu|cpu-arm64)
+  gpu|mgpu|gpu-arm64|cpu|cpu-arm64|cpu-ppc64le)
     ;;
   *)
-    echo "Error: --suite must be one of: gpu, mgpu, gpu-arm64, cpu, cpu-arm64. Got '${suite}'"
+    echo "Error: --suite must be one of: gpu, mgpu, gpu-arm64, cpu, cpu-arm64, cpu-ppc64le. Got '${suite}'"
     exit 1
     ;;
 esac
@@ -76,6 +76,9 @@ case "$suite" in
     ;;
   cpu|cpu-arm64)
     source activate linux_cpu_test
+    ;;
+  cpu-ppc64le)
+    # Native runner — no pre-built conda environment; skip activation
     ;;
 esac
 
@@ -129,6 +132,12 @@ case "$suite" in
     ;;
   cpu-arm64)
     echo "-- Run Python tests (CPU, ARM64)"
+    pytest -v -s -rxXs --durations=0 \
+      tests/python/test_basic.py tests/python/test_basic_models.py \
+      tests/python/test_model_compatibility.py
+    ;;
+  cpu-ppc64le)
+    echo "-- Run Python tests (CPU, ppc64le)"
     pytest -v -s -rxXs --durations=0 \
       tests/python/test_basic.py tests/python/test_basic_models.py \
       tests/python/test_model_compatibility.py
