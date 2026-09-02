@@ -277,9 +277,17 @@ jobs:
       - uses: actions/checkout@v7.0.1
         with:
           submodules: "true"
-      - name: Log into Docker registry (AWS ECR)
+      - if: matrix.arch == 'ppc64le'
+        name: Set up Python (ppc64le)
+        uses: IBM/setup-python-pz@4ca38bfac8eac147e9c7aad9ab246f68655afb36
+        with:
+          python-version: "3.12"
+          architecture: ppc64le
+      - if: matrix.arch != 'ppc64le'
+        name: Log into Docker registry (AWS ECR)
         run: bash ops/pipeline/login-docker-registry.sh
-      - run: |
+      - name: Build wheel
+        run: |
           bash ops/pipeline/build-python-wheels-cpu.sh \
             ${{ matrix.manylinux_target }} ${{ matrix.arch }}
 
