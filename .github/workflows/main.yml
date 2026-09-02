@@ -18,7 +18,6 @@ concurrency:
 env:
   BRANCH_NAME: >-
     ${{ github.event.pull_request.number && 'PR-' }}${{ github.event.pull_request.number || github.ref_name }}
-
 jobs:
   ci-configure:
     name: Configure variables for CI
@@ -140,7 +139,6 @@ jobs:
             --s3-bucket ${{ env.RUNS_ON_S3_BUCKET_CACHE }} \
             --prefix cache/${{ github.run_id }}/build-cuda${{ matrix.cuda_version }}-${{ matrix.arch }} \
             build/testxgboost python-package/dist/*.whl
-
   build-cuda-clang:
     name: Build CUDA 12.9 with clang 22.1.8 (x86_64)
     needs: ci-configure
@@ -223,7 +221,6 @@ jobs:
             --s3-bucket ${{ env.RUNS_ON_S3_BUCKET_CACHE }} \
             --prefix cache/${{ github.run_id }}/audit-cuda${{ matrix.cuda_version }}-wheel-${{ matrix.arch }} \
             python-package/dist/*.whl
-
   build-cuda-with-rmm:
     name: Build CUDA 13 with RMM
     needs: ci-configure
@@ -256,7 +253,6 @@ jobs:
             --s3-bucket ${{ env.RUNS_ON_S3_BUCKET_CACHE }} \
             --prefix cache/${{ github.run_id }}/build-cuda-with-rmm \
             build/testxgboost
-
   build-python-wheels-cpu:
     name: Build CPU wheel (xgboost-cpu) for ${{ matrix.manylinux_target }}_${{ matrix.arch }}
     runs-on:
@@ -283,7 +279,6 @@ jobs:
       - run: |
           bash ops/pipeline/build-python-wheels-cpu.sh \
             ${{ matrix.manylinux_target }} ${{ matrix.arch }}
-
   build-gpu-rpkg:
     name: Build GPU-enabled R package
     needs: ci-configure
@@ -545,6 +540,39 @@ jobs:
       - name: Run Python tests (${{ matrix.description }})
         run: bash ops/pipeline/test-python-wheel.sh --suite ${{ matrix.suite }}
 
+  build-python-wheels-cpu-ppc64le:
+    name: Build CPU wheel (xgboost-cpu) for manylinux_2_28_ppc64le
+    runs-on: [self-hosted, linux, ppc64le]
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          submodules: "true"
+      - name: Set up Python (ppc64le)
+        uses: IBM/setup-python-pz@4ca38bfac8eac147e9c7aad9ab246f68655afb36
+        with:
+          python-version: "3.12"
+          architecture: ppc64le
+      - name: Install build dependencies
+        run: pip install --upgrade pip build wheel pydistcheck scikit-build-core cmake ninja
+      - name: Patch package name to xgboost-cpu
+        run: python3 ops/script/pypi_variants.py --use-suffix=cpu --require-nccl-dep=na
+      - name: Build wheel
+        run: |
+          cd python-package
+          python -m pip wheel --no-deps -v . --wheel-dir dist/
+      - name: Tag wheel as linux_ppc64le
+        # auditwheel cannot retag to manylinux_2_28 because Ubuntu 24.04 ships glibc 2.39.
+        # For self-hosted testing, linux_ppc64le is the correct platform tag.
+        run: |
+          python3 -m wheel tags --python-tag py3 --abi-tag none \
+            --platform linux_ppc64le --remove python-package/dist/xgboost_cpu-*.whl
+      - name: Upload wheel artifact
+        uses: actions/upload-artifact@v7.0.1
+        with:
+          name: python-wheel-linux_ppc64le
+          path: python-package/dist/*.whl
+          retention-days: 7
+
   test-python-wheel-cpu-ppc64le:
     name: Python tests CPU (ppc64le)
     needs: build-python-wheels-cpu-ppc64le
@@ -552,15 +580,20 @@ jobs:
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@v7.0.1
-      - name: Set up Python
-        uses: actions/setup-python@v5
+      - name: Set up Python (ppc64le)
+        uses: IBM/setup-python-pz@4ca38bfac8eac147e9c7aad9ab246f68655afb36
         with:
           python-version: "3.12"
+          architecture: ppc64le
       - name: Download ppc64le wheel artifact
         uses: actions/download-artifact@v4
         with:
-          name: python-wheel-manylinux_2_28_ppc64le
+          name: python-wheel-linux_ppc64le
           path: wheelhouse
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --fix-missing gfortran libopenblas-dev pkg-config
       - name: Install test dependencies
         run: pip install pytest numpy scipy
       - name: Run Python tests (CPU, ppc64le)
@@ -639,7 +672,6 @@ jobs:
         run: |
           pytest -s -v -rxXs --durations=0 tests/python
           pytest -s -v -rxXs --durations=0 tests/test_distributed/test_with_dask
-
   test-cross-platform-inference:
     name: Cross-platform inference test (macOS Apple Silicon)
     needs: [test-python-wheel-gpu, python-wheels-macos]
