@@ -259,39 +259,47 @@ jobs:
 
   build-python-wheels-cpu:
     name: Build CPU wheel (xgboost-cpu) for ${{ matrix.manylinux_target }}_${{ matrix.arch }}
-    runs-on: ${{ fromJSON(matrix.runs_on) }}
+    runs-on:
+      - runs-on
+      - runner=${{ matrix.runner }}
+      - run-id=${{ github.run_id }}
+      - tag=main-build-python-wheels-cpu-${{ matrix.manylinux_target }}-${{ matrix.arch }}
     strategy:
       fail-fast: false
       matrix:
         include:
         - manylinux_target: manylinux_2_28
           arch: aarch64
-          runs_on: '["runs-on", "runner=linux-arm64-cpu", "run-id=${{ github.run_id }}", "tag=main-build-python-wheels-cpu-manylinux_2_28-aarch64"]'
+          runner: linux-arm64-cpu
         - manylinux_target: manylinux_2_28
           arch: x86_64
-          runs_on: '["runs-on", "runner=linux-amd64-cpu", "run-id=${{ github.run_id }}", "tag=main-build-python-wheels-cpu-manylinux_2_28-x86_64"]'
-        - manylinux_target: linux
-          arch: ppc64le
-          runs_on: '["self-hosted", "linux", "ppc64le"]'
+          runner: linux-amd64-cpu
     steps:
       - uses: actions/checkout@v7.0.1
         with:
           submodules: "true"
-      - if: matrix.arch == 'ppc64le'
-        name: Set up Python (ppc64le)
+      - name: Log into Docker registry (AWS ECR)
+        run: bash ops/pipeline/login-docker-registry.sh
+      - run: |
+          bash ops/pipeline/build-python-wheels-cpu.sh \
+            ${{ matrix.manylinux_target }} ${{ matrix.arch }}
+
+  build-python-wheels-ppc64le:
+    name: Build CPU wheel (xgboost-cpu) for linux_ppc64le
+    runs-on: [self-hosted, linux, ppc64le]
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          submodules: "true"
+      - name: Set up Python (ppc64le)
         uses: IBM/setup-python-pz@4ca38bfac8eac147e9c7aad9ab246f68655afb36
         with:
           python-version: "3.12"
           architecture: ppc64le
-      - if: matrix.arch != 'ppc64le'
-        name: Log into Docker registry (AWS ECR)
-        run: bash ops/pipeline/login-docker-registry.sh
       - name: Build wheel
         run: |
-          bash ops/pipeline/build-python-wheels-cpu.sh \
-            ${{ matrix.manylinux_target }} ${{ matrix.arch }}
-      - if: matrix.arch == 'ppc64le'
-        name: Upload wheel artifact (ppc64le)
+          bash ops/pipeline/build-python-wheels-cpu.sh linux ppc64le
+      - name: Upload wheel artifact
         uses: actions/upload-artifact@v7.0.1
         with:
           name: python-wheel-linux_ppc64le
@@ -516,8 +524,12 @@ jobs:
 
   test-python-wheel-cpu:
     name: Python tests CPU (${{ matrix.description }})
-    needs: [ci-configure, audit-cuda-wheel, build-python-wheels-cpu]
-    runs-on: ${{ fromJSON(matrix.runs_on) }}
+    needs: [ci-configure, audit-cuda-wheel]
+    runs-on:
+      - runs-on=${{ github.run_id }}
+      - runner=${{ matrix.runner }}
+      - tag=main-test-python-wheel-cpu-${{ matrix.description }}
+      - extras=s3-cache
     timeout-minutes: 60
     strategy:
       fail-fast: false
@@ -527,60 +539,59 @@ jobs:
           - description: CPU-amd64
             image_repo: xgb-ci.cpu
             suite: cpu
+            runner: linux-amd64-cpu
             artifact_from: audit-cuda13-wheel-x86_64
             container_options: "--init"
-            runs_on: '["runs-on=${{ github.run_id }}", "runner=linux-amd64-cpu", "tag=main-test-python-wheel-cpu-CPU-amd64", "extras=s3-cache"]'
           - description: CPU-arm64
             image_repo: xgb-ci.cpu_aarch64
             suite: cpu-arm64
+            runner: linux-arm64-cpu
             artifact_from: audit-cuda13-wheel-aarch64
             container_options: "--init"
-            runs_on: '["runs-on=${{ github.run_id }}", "runner=linux-arm64-cpu", "tag=main-test-python-wheel-cpu-CPU-arm64", "extras=s3-cache"]'
-          - description: CPU-ppc64le
-            suite: cpu-ppc64le
-            runs_on: '["self-hosted", "linux", "ppc64le"]'
     container:
-      image: ${{ matrix.image_repo && format('{0}/{1}:{2}', needs.ci-configure.outputs.docker_registry, matrix.image_repo, needs.ci-configure.outputs.image_tag) || '' }}
+      image: ${{ needs.ci-configure.outputs.docker_registry }}/${{ matrix.image_repo }}:${{ needs.ci-configure.outputs.image_tag }}
       credentials:
         username: ${{ needs.ci-configure.outputs.docker_username }}
         password: ${{ needs.ci-configure.outputs.docker_password }}
       options: ${{ matrix.container_options }}
     steps:
-      - if: matrix.description != 'CPU-ppc64le'
-        uses: runs-on/action@v2
+      - uses: runs-on/action@v2
       - uses: actions/checkout@v7.0.1
-      - if: matrix.description == 'CPU-ppc64le'
-        name: Set up Python (ppc64le)
-        uses: IBM/setup-python-pz@4ca38bfac8eac147e9c7aad9ab246f68655afb36
-        with:
-          python-version: "3.12"
-          architecture: ppc64le
-      # S3 stash — amd64/aarch64 only
-      - if: matrix.description != 'CPU-ppc64le'
-        name: Unstash Python wheel
+      - name: Unstash Python wheel
         run: |
           python3 ops/pipeline/manage-artifacts.py download \
             --s3-bucket ${{ env.RUNS_ON_S3_BUCKET_CACHE }} \
             --prefix cache/${{ github.run_id }}/${{ matrix.artifact_from }} \
             --dest-dir wheelhouse \
             *.whl
-      # GitHub artifact — ppc64le only
-      - if: matrix.description == 'CPU-ppc64le'
-        name: Download ppc64le wheel artifact
+      - name: Run Python tests (${{ matrix.description }})
+        run: bash ops/pipeline/test-python-wheel.sh --suite ${{ matrix.suite }}
+
+  test-python-wheel-ppc64le:
+    name: Python tests CPU (ppc64le)
+    needs: build-python-wheels-ppc64le
+    runs-on: [self-hosted, linux, ppc64le]
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - name: Set up Python (ppc64le)
+        uses: IBM/setup-python-pz@4ca38bfac8eac147e9c7aad9ab246f68655afb36
+        with:
+          python-version: "3.12"
+          architecture: ppc64le
+      - name: Download wheel artifact
         uses: actions/download-artifact@v4
         with:
           name: python-wheel-linux_ppc64le
           path: wheelhouse
-      - if: matrix.description == 'CPU-ppc64le'
-        name: Install system dependencies (ppc64le)
+      - name: Install system dependencies
         run: |
           sudo apt-get update
           sudo apt-get install -y --fix-missing gfortran libopenblas-dev pkg-config
-      - if: matrix.description == 'CPU-ppc64le'
-        name: Install test dependencies (ppc64le)
+      - name: Install test dependencies
         run: pip install pytest numpy scipy
-      - name: Run Python tests (${{ matrix.description }})
-        run: bash ops/pipeline/test-python-wheel.sh --suite ${{ matrix.suite }}
+      - name: Run Python tests (ppc64le)
+        run: bash ops/pipeline/test-python-wheel.sh --suite cpu-ppc64le
 
   python-wheels-macos:
     name: Build macOS wheel (${{ matrix.platform_id }})
