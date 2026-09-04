@@ -11,12 +11,17 @@ fi
 
 if [[ "$#" -lt 2 ]]
 then
-  echo "Usage: $0 manylinux_2_28 {x86_64,aarch64}"
+  echo "Usage: $0 {manylinux_2_28,manylinux_2_34} {x86_64,aarch64,ppc64le}"
   exit 1
 fi
 
 manylinux_target="$1"
 arch="$2"
+
+# ppc64le: use manylinux_2_34 base (manylinux_2_28 AlmaLinux mirrors unreachable)
+if [[ "${arch}" == "ppc64le" ]]; then
+  manylinux_target="manylinux_2_34"
+fi
 
 source ops/pipeline/classify-git-branch.sh
 source ops/pipeline/get-docker-registry-details.sh

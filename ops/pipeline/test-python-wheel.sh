@@ -38,10 +38,10 @@ fi
 
 # Validate parameter values
 case "${suite}" in
-  gpu|mgpu|gpu-arm64|cpu|cpu-arm64)
+  gpu|mgpu|gpu-arm64|cpu|cpu-arm64|cpu-ppc64le)
     ;;
   *)
-    echo "Error: --suite must be one of: gpu, mgpu, gpu-arm64, cpu, cpu-arm64. Got '${suite}'"
+    echo "Error: --suite must be one of: gpu, mgpu, gpu-arm64, cpu, cpu-arm64, cpu-ppc64le. Got '${suite}'"
     exit 1
     ;;
 esac
@@ -74,7 +74,7 @@ case "$suite" in
   gpu|mgpu|gpu-arm64)
     source activate gpu_test
     ;;
-  cpu|cpu-arm64)
+  cpu|cpu-arm64|cpu-ppc64le)
     source activate linux_cpu_test
     ;;
 esac
@@ -129,6 +129,12 @@ case "$suite" in
     ;;
   cpu-arm64)
     echo "-- Run Python tests (CPU, ARM64)"
+    pytest -v -s -rxXs --durations=0 \
+      tests/python/test_basic.py tests/python/test_basic_models.py \
+      tests/python/test_model_compatibility.py
+    ;;
+  cpu-ppc64le)
+    echo "-- Run Python tests (CPU, ppc64le)"
     pytest -v -s -rxXs --durations=0 \
       tests/python/test_basic.py tests/python/test_basic_models.py \
       tests/python/test_model_compatibility.py
