@@ -304,6 +304,8 @@ jobs:
         run: |
           echo "${{ secrets.DOCKERHUB_TOKEN }}" | \
             docker login -u "${{ secrets.DOCKERHUB_USERNAME }}" --password-stdin
+      - name: Install required Python packages        # ← ADD THIS
+        run: pip install packaging
       - name: Build Python wheel (ppc64le)
         env:
           GITHUB_SHA: ${{ github.sha }}
